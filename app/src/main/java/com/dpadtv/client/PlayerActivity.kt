@@ -592,12 +592,19 @@ class PlayerActivity : Activity() {
                             // 直播重试 8 次都连不上，基本就是台挂了/被地区限制，别甩错误码给用户。
                             // 带上频道名，用户才知道是哪个台的问题，切走了也认得回来
                             isLive -> "${nameOf(currentIndex)} 连不上 · 按左右键换台"
+                            // 4.4 的盒子掉电就丢 RTC，退回出厂时刻，于是每张证书都「尚未生效」，
+                            // 报出来的正是 ERROR_CODE_IO_NETWORK_CONNECTION_FAILED。这种情况改代码
+                            // 没有用，但用户在系统设置里点一下就能修好，得单独告诉他
+                            clockLooksBehind() -> "盒子时间不对 · 请在系统设置里把日期时间调准"
                             else -> "播放失败：${error.errorCodeName}"
                         }
                         hasError = true
                         // 直播已经有左右键切台，不再提「按菜单键换集」
                         baseText = if (isLive) msg else "$msg  ·  按菜单键换集或换源"
-                        titleText.text = baseText
+                        // 老盒子没有 adb，错误码分不出是时钟、根证书还是链路；测试包把异常链摊在
+                        // 画面上，一次截图就能定死。baseText 保持干净，恢复播放时还要用它
+                        titleText.text =
+                            if (BuildConfig.TEST_BUILD) "$baseText\n${causeChain(error)}" else baseText
                         titleText.setTextColor(Ui.DANGER)
                         bufferingBox.visibility = View.GONE
                         speedText.visibility = View.GONE
@@ -605,6 +612,24 @@ class PlayerActivity : Activity() {
                         // 出错时把操作栏顶出来：用户不用先摸索按键就能换下一集
                         showActions()
                     }
+
+                    /** 异常链，最多三层，每层消息截短：够看清失败原因，又不会铺满屏幕 */
+                    private fun causeChain(t: Throwable?): String {
+                        val parts = ArrayList<String>(3)
+                        var cur = t
+                        while (cur != null && parts.size < 3) {
+                            val m = cur.message
+                            val suffix = if (m.isNullOrEmpty()) "" else ": " + m.replace('\n', ' ').take(80)
+                            parts.add(cur.javaClass.simpleName + suffix)
+                            cur = cur.cause
+                        }
+                        return parts.joinToString(" ← ")
+                    }
+
+                    /** 时间比固件构建时刻还早，或退到 2018 年以前，就当作 RTC 丢了 */
+                    private fun clockLooksBehind(): Boolean =
+                        System.currentTimeMillis() < android.os.Build.TIME ||
+                        java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) < 2018
                 })
 
                 val items = urls.map { liveItem(it) }
