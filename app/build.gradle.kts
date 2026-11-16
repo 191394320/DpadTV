@@ -19,9 +19,9 @@ android {
     defaultConfig {
         applicationId = "com.dpadtv.client"
         // 19 = Android 4.4。内核已从 Media3（下限 23）换成 ExoPlayer 2.19.1（下限 16）。
-        // 4.4/5.0 走 legacy multidex，见 defaultConfig.multiDexEnabled 与 App。
+        // AGP 9 删掉了 multiDexEnabled 这个 DSL 属性，minSdk<21 时 legacy multidex 由插件自己判定；
+        // 需要保留的是 androidx.multidex 依赖 + App 继承 MultiDexApplication，见 App.kt。
         minSdk = 19
-        multiDexEnabled = true
         targetSdk = 37
         versionCode = 104
         // 后缀 m19 = minSdk 19：装到盒子上用「关于」里的版本号就能分清是老包还是这份 4.4 构建
