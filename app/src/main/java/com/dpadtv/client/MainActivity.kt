@@ -443,7 +443,9 @@ class MainActivity : Activity() {
             // 替换背景后按钮自带的内边距会丢，显式补上，避免文字贴边
             setPadding(dp(18), dp(8), dp(18), dp(8))
             // 去掉 Material 默认的按下抬升阴影：全站是扁平深色，阴影反而显脏
-            stateListAnimator = null
+            // setStateListAnimator 是 API 21 才有的方法，4.4 的按钮本来就没有抬升动画，
+            // 不加这个判断会在建按钮时直接 NoSuchMethodError（首屏就崩）
+            if (android.os.Build.VERSION.SDK_INT >= 21) stateListAnimator = null
             setOnClickListener { onClick() }
             applyFocusStyle(
                 this,

@@ -264,7 +264,9 @@ class PlayerActivity : Activity() {
         }
         seekBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 1000
-            progressDrawable = getDrawable(R.drawable.player_progress)
+            // Context.getDrawable(int) 是 API 21 才有；player_progress.xml 全是写死的颜色，
+            // 不含 ?attr，所以走 API 1 就有的 Resources 版本，四个版本行为一致
+            progressDrawable = resources.getDrawable(R.drawable.player_progress)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         timeText = TextView(this).apply {
@@ -388,7 +390,10 @@ class PlayerActivity : Activity() {
             gravity = Gravity.CENTER_HORIZONTAL
             addView(
                 ProgressBar(this@PlayerActivity).apply {
-                    indeterminateTintList = android.content.res.ColorStateList.valueOf(Ui.ACCENT)
+                    // setIndeterminateTintList 是 API 21；4.4 上留着框架自己的转圈配色即可
+                    if (android.os.Build.VERSION.SDK_INT >= 21) {
+                        indeterminateTintList = android.content.res.ColorStateList.valueOf(Ui.ACCENT)
+                    }
                 },
                 LinearLayout.LayoutParams(dp(40), dp(40)).apply {
                     gravity = Gravity.CENTER_HORIZONTAL
