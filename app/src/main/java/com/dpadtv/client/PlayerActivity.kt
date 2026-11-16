@@ -613,17 +613,25 @@ class PlayerActivity : Activity() {
                         showActions()
                     }
 
-                    /** 异常链，最多三层，每层消息截短：够看清失败原因，又不会铺满屏幕 */
+                    /** 异常链：外层截短，**最里层留全**。4.4 的 OpenSSL 错误码只在最后一行
+                     *  （error:14077410:SSL routines:SSL23_GET_SERVER_HELLO:sslv3 alert handshake
+                     *  failure 之类），而它才能分清是服务器拒绝我们的 ClientHello，还是中间有人
+                     *  插了一手回了明文。上一版把每层都截到 80 字，正好把这半行截没了。 */
                     private fun causeChain(t: Throwable?): String {
-                        val parts = ArrayList<String>(3)
+                        val parts = ArrayList<String>(4)
                         var cur = t
-                        while (cur != null && parts.size < 3) {
+                        while (cur != null) {
                             val m = cur.message
-                            val suffix = if (m.isNullOrEmpty()) "" else ": " + m.replace('\n', ' ').take(80)
-                            parts.add(cur.javaClass.simpleName + suffix)
+                            parts.add(
+                                cur.javaClass.simpleName +
+                                    if (m.isNullOrEmpty()) "" else ": " + m.replace('\n', ' ').trim()
+                            )
+                            if (parts.size >= 4) break
                             cur = cur.cause
                         }
-                        return parts.joinToString(" ← ")
+                        if (parts.isEmpty()) return ""
+                        val head = parts.dropLast(1).map { it.take(70) }
+                        return (head + parts.last().take(420)).joinToString(" ← ")
                     }
 
                     /** 时间比固件构建时刻还早，或退到 2018 年以前，就当作 RTC 丢了 */
