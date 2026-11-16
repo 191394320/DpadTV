@@ -28,9 +28,9 @@ android {
         // 配套的还有 androidx.multidex 依赖 + App 继承 MultiDexApplication，见 App.kt。
         multiDexEnabled = true
         targetSdk = 37
-        versionCode = 107
+        versionCode = 108
         // 后缀 m19 = minSdk 19：装到盒子上用「关于」里的版本号就能分清是老包还是这份 4.4 构建
-        versionName = "1.3.4-m19"
+        versionName = "1.3.5-m19"
     }
 
     // release 签名从 local.properties 读（keystore 与密码都不入库）；
