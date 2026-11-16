@@ -22,8 +22,14 @@
     <!--
       对话框主题：统一成「比页面稍亮一点的卡片色」。
       分隔线/文字颜色这些属性 API 19 就有，所以两边共用同一套取值。
+
+      parent 用 Theme.Holo.Dialog 而不是看着更对口的 Theme.Holo.Dialog.Alert：
+      后者在 framework 的 public.xml 里没登记，是框架内部资源，AAPT2 链接阶段直接报
+      "resource android:style/Theme.Holo.Dialog.Alert is private" 而构建失败。
+      Alert 变体本身也只是把 windowBackground 置透明 + 设最小宽度，对我们的卡片背景没影响；
+      alertDialogStyle（AlertDialog 内部布局的来源）定义在 Theme.Holo 上，这条链照样继承得到。
     -->
-    <style name="AppDialog" parent="@android:style/Theme.Holo.Dialog.Alert">
+    <style name="AppDialog" parent="@android:style/Theme.Holo.Dialog">
         <item name="android:windowBackground">@drawable/dialog_bg</item>
         <item name="android:colorBackground">#1a2233</item>
         <item name="android:textColorPrimary">#e5e7eb</item>
