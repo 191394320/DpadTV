@@ -31,6 +31,15 @@ jobs:
           path: ~/.android/debug.keystore
           key: dpadtv-debug-keystore-v1
 
+      # 缓存 Gradle 发行版和依赖，改一次代码不用重下几十兆；调试期一轮能省半分钟。
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts', 'gradle.properties', 'gradle/libs.versions.toml') }}
+          restore-keys: gradle-
+
       - name: Accept Android SDK licenses
         run: |
           SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
@@ -39,7 +48,37 @@ jobs:
       - name: Assemble debug APK
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon --stacktrace assembleDebug
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace assembleDebug 2>&1 | tee /tmp/gradle.log
+
+      # Actions 的日志要登录才能看，annotation 不用：把关键报错原样贴到运行摘要页，
+      # 失败原因直接在时间线上可读，不用来回复制日志。
+      - name: Report failure as annotations
+        if: failure()
+        run: |
+          if [ ! -f /tmp/gradle.log ]; then
+            echo "::error::no gradle log produced"
+            exit 0
+          fi
+          {
+            grep -E '^e: ' /tmp/gradle.log | head -25 || true
+            sed -n '/What went wrong/,/Try:/p' /tmp/gradle.log | head -40 || true
+            grep -E '^Caused by: ' /tmp/gradle.log | head -20 || true
+          } > /tmp/err.txt
+          [ -s /tmp/err.txt ] || tail -30 /tmp/gradle.log > /tmp/err.txt
+          while IFS= read -r line; do
+            esc=$(printf '%s' "$line" | sed -e 's/%/%25/g' -e 's/#/%23/g' | cut -c1-400)
+            if [ -n "$esc" ]; then echo "::error::$esc"; fi
+          done < /tmp/err.txt
+          exit 0
+
+      - name: Upload gradle log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-log
+          path: /tmp/gradle.log
+          if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4
         with:
