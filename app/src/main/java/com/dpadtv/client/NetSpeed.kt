@@ -1,9 +1,9 @@
 package com.dpadtv.client
 
 import android.os.SystemClock
-import androidx.media3.datasource.DataSource
-import androidx.media3.datasource.DataSpec
-import androidx.media3.datasource.TransferListener
+import com.google.android.exoplayer2.upstream.DataSource
+import com.google.android.exoplayer2.upstream.DataSpec
+import com.google.android.exoplayer2.upstream.TransferListener
 
 /**
  * 网速实测：在 DataSource 层统计真正走网络的字节与耗时。
@@ -62,7 +62,7 @@ class NetSpeedMeter(
 }
 
 /**
- * 套在上游（网络）数据源外层的计数代理，Media3 数据源的薄装饰器。
+ * 套在上游（网络）数据源外层的计数代理，ExoPlayer 数据源的薄装饰器。
  * 只做计时与计数，open/read/close 全部原样转发给上游。
  */
 class MeteredDataSource(

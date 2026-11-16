@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  这是 4.4~4.4（API 19~20）那份。5.0 及以上由 values-v21/themes.xml 整份覆盖。
+
+  为什么要拆开：Theme.Material 是 API 21 才有的资源，4.4 上根本不存在，
+  拿着它启动第一个 Activity 就会 Resources$NotFoundException 直接崩；
+  colorAccent / colorControlHighlight 这些主题属性同样是 API 21 才有，
+  写在这份里对老系统没有意义。所以基线只用 Holo（深色，正好合这套 UI 的观感），
+  并且不引用任何新属性。
+-->
 <resources>
-    <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar.Fullscreen">
+    <style name="AppTheme" parent="@android:style/Theme.Holo.NoActionBar.Fullscreen">
         <item name="android:windowBackground">@android:color/black</item>
-        <item name="android:colorPrimary">#0b101a</item>
-        <item name="android:colorPrimaryDark">#000000</item>
-        <item name="android:colorAccent">#38bdf8</item>
         <item name="android:colorBackground">#0b101a</item>
         <item name="android:textColorPrimary">#e5e7eb</item>
         <item name="android:textColorSecondary">#94a3b8</item>
@@ -14,17 +20,14 @@
     </style>
 
     <!--
-      对话框主题：系统 Material 对话框默认是灰底，和全站深色风格不一致。
-      这里统一成「比页面稍亮一点的卡片色 + 亮蓝强调色」，
-      所有 AlertDialog（来源筛选、片源操作、输入框等）都会跟着变。
+      对话框主题：统一成「比页面稍亮一点的卡片色」。
+      分隔线/文字颜色这些属性 API 19 就有，所以两边共用同一套取值。
     -->
-    <style name="AppDialog" parent="@android:style/Theme.Material.Dialog.Alert">
+    <style name="AppDialog" parent="@android:style/Theme.Holo.Dialog.Alert">
         <item name="android:windowBackground">@drawable/dialog_bg</item>
         <item name="android:colorBackground">#1a2233</item>
         <item name="android:textColorPrimary">#e5e7eb</item>
         <item name="android:textColorSecondary">#94a3b8</item>
-        <item name="android:colorAccent">#38bdf8</item>
-        <item name="android:colorControlHighlight">#1e3a5f</item>
         <item name="android:divider">#334155</item>
         <item name="android:dividerHeight">1dp</item>
     </style>

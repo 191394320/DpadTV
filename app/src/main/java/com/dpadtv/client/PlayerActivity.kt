@@ -18,18 +18,18 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
-import androidx.media3.common.MediaItem
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
-import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.DefaultRenderersFactory
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
-import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
+import com.google.android.exoplayer2.MediaItem
+import com.google.android.exoplayer2.PlaybackException
+import com.google.android.exoplayer2.Player
+import com.google.android.exoplayer2.DefaultLoadControl
+import com.google.android.exoplayer2.DefaultRenderersFactory
+import com.google.android.exoplayer2.ExoPlayer
+import com.google.android.exoplayer2.mediacodec.MediaCodecUtil
+import com.google.android.exoplayer2.ui.AspectRatioFrameLayout
+import com.google.android.exoplayer2.ui.PlayerView
 
 /**
- * 原生播放页（Media3 / ExoPlayer）。
+ * 原生播放页（ExoPlayer 2 / HLS）。
  *
  * 按键逻辑（电视遥控器）：
  *   · OK           暂停 / 播放
@@ -454,11 +454,11 @@ class PlayerActivity : Activity() {
             .build()
 
         // 分片级磁盘缓存：看过的片段落盘，回拖/重看不再重复下载
-        val httpFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
+        val httpFactory = com.google.android.exoplayer2.upstream.DefaultHttpDataSource.Factory()
             .setUserAgent("DpadTV-Android")
             .setConnectTimeoutMs(if (isLive) 20_000 else 15_000)
             .setReadTimeoutMs(if (isLive) 30_000 else 15_000)
-            // 直播地址大量存在 http→https 的 302 跳转，Media3 默认禁止跨协议重定向，
+            // 直播地址大量存在 http→https 的 302 跳转，ExoPlayer 默认禁止跨协议重定向，
             // 被拒绝时抛的就是 ERROR_CODE_IO_UNSPECIFIED —— 这是这个错误最常见的一种来源
             .setAllowCrossProtocolRedirects(true)
             .apply {
@@ -467,13 +467,13 @@ class PlayerActivity : Activity() {
                     setDefaultRequestProperties(mapOf("Cookie" to cookieHeader))
                 }
             }
-        val cacheFactory = androidx.media3.datasource.cache.CacheDataSource.Factory()
+        val cacheFactory = com.google.android.exoplayer2.upstream.cache.CacheDataSource.Factory()
             .setCache(PlaybackCache.get(this))
             .setUpstreamDataSourceFactory(MeteredDataSource.Factory(httpFactory, netSpeedMeter))
-            .setFlags(androidx.media3.datasource.cache.CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+            .setFlags(com.google.android.exoplayer2.upstream.cache.CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         // 直播不挂磁盘缓存：直播分片写进缓存既没用，分片被回收/304 时还会抛 IO 错，
         // 表现出来就是正在看的时候突然 ERROR_CODE_IO_UNSPECIFIED
-        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+        val mediaSourceFactory = com.google.android.exoplayer2.source.DefaultMediaSourceFactory(
             if (isLive) MeteredDataSource.Factory(httpFactory, netSpeedMeter) else cacheFactory,
         ).apply {
             if (isLive) {
@@ -501,7 +501,7 @@ class PlayerActivity : Activity() {
                 // 调试包挂 EventLogger：直播这种短窗口源出问题时，光一个错误码没法定位，
                 // 得知道出错前发生了什么（清单刷新 / 分片加载 / 时间轴变化 / seek）。
                 if (com.dpadtv.client.BuildConfig.DEBUG) {
-                    exo.addAnalyticsListener(androidx.media3.exoplayer.util.EventLogger())
+                    exo.addAnalyticsListener(com.google.android.exoplayer2.util.EventLogger())
                 }
 
                 exo.addListener(object : Player.Listener {
@@ -1059,7 +1059,7 @@ class PlayerActivity : Activity() {
      */
     private fun liveItem(url: String): MediaItem {
         val builder = MediaItem.Builder().setUri(url)
-        if (isLive) builder.setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8)
+        if (isLive) builder.setMimeType(com.google.android.exoplayer2.util.MimeTypes.APPLICATION_M3U8)
         return builder.build()
     }
 

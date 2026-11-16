@@ -526,8 +526,11 @@ class MainActivity : Activity() {
     private fun card(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         background = Ui.bg(this@MainActivity, Ui.SURFACE, Ui.R_CARD)
-        clipToOutline = true
-        foreground = Ui.bg(this@MainActivity, android.graphics.Color.TRANSPARENT, Ui.R_CARD, 0, 1, Ui.STROKE)
+        RoundClip.apply(this, dp(Ui.R_CARD).toFloat())
+        RoundClip.foreground(
+            this,
+            Ui.bg(this@MainActivity, android.graphics.Color.TRANSPARENT, Ui.R_CARD, 0, 1, Ui.STROKE),
+        )
     }
 
     /**
@@ -665,14 +668,7 @@ class MainActivity : Activity() {
         val img = ImageView(this).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
             setBackgroundColor(Ui.SURFACE_HI)
-            clipToOutline = true
-            outlineProvider = object : android.view.ViewOutlineProvider() {
-                override fun getOutline(view: View, outline: android.graphics.Outline) {
-                    outline.setRoundRect(
-                        0, 0, view.width, view.height, dp(Ui.R_CARD).toFloat(),
-                    )
-                }
-            }
+            RoundClip.apply(this, dp(Ui.R_CARD).toFloat())
         }
         frame.addView(img, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -747,12 +743,7 @@ class MainActivity : Activity() {
 
     /** 把任意 View 裁成圆角（图片必须裁 View 本身，只给背景设圆角会被图盖住） */
     private fun roundClip(v: View, radiusDp: Int = Ui.R_CARD) {
-        v.clipToOutline = true
-        v.outlineProvider = object : android.view.ViewOutlineProvider() {
-            override fun getOutline(view: View, outline: android.graphics.Outline) {
-                outline.setRoundRect(0, 0, view.width, view.height, dp(radiusDp).toFloat())
-            }
-        }
+        RoundClip.apply(v, dp(radiusDp).toFloat())
     }
 
     private fun progress(text: String = "加载中…") {
@@ -1051,8 +1042,9 @@ class MainActivity : Activity() {
 
     private var browsePath = "/storage"
 
-    /** 请求读存储权限（API 23+）。已授权则直接返回 true。 */
+    /** 请求读存储权限（API 23~32）。已授权，或 23 之前（安装期即授权）返回 true。 */
     private fun ensureReadPermission(): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < 23) return true // checkSelfPermission 是 API 23 才有的
         if (android.os.Build.VERSION.SDK_INT >= 33) return true // 33+ 由 SAF 负责，这里不折腾
         val granted = checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) ==
             android.content.pm.PackageManager.PERMISSION_GRANTED

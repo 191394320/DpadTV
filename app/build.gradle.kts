@@ -18,11 +18,14 @@ android {
 
     defaultConfig {
         applicationId = "com.dpadtv.client"
-        // 23 = Android 6.0：Media3 的下限之上，老盒子都能装
-        minSdk = 23
+        // 19 = Android 4.4。内核已从 Media3（下限 23）换成 ExoPlayer 2.19.1（下限 16）。
+        // 4.4/5.0 走 legacy multidex，见 defaultConfig.multiDexEnabled 与 App。
+        minSdk = 19
+        multiDexEnabled = true
         targetSdk = 37
-        versionCode = 103
-        versionName = "1.3.0"
+        versionCode = 104
+        // 后缀 m19 = minSdk 19：装到盒子上用「关于」里的版本号就能分清是老包还是这份 4.4 构建
+        versionName = "1.3.1-m19"
     }
 
     // release 签名从 local.properties 读（keystore 与密码都不入库）；
@@ -86,10 +89,14 @@ android {
 
 dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
-    // 原生播放：ExoPlayer 对 HLS 的容错远好于 MediaPlayer，H.265 取决于 SoC 硬解
-    implementation("androidx.media3:media3-exoplayer:1.9.4")
-    implementation("androidx.media3:media3-exoplayer-hls:1.9.4")
-    implementation("androidx.media3:media3-ui:1.9.4")
+    // 原生播放：ExoPlayer 对 HLS 的容错远好于 MediaPlayer，H.265 取决于 SoC 硬解。
+    // 停在 2.19.1（EP2 最后一版）是故意的：Media3 从 1.9.0 起要求 minSdk 23，
+    // 而 4.4（API 19）只有 EP2 支持；4.4 的 SoC 也没有 HEVC 硬解（那是 API 21 才进的框架）。
+    implementation("com.google.android.exoplayer:exoplayer-core:2.19.1")
+    implementation("com.google.android.exoplayer:exoplayer-hls:2.19.1")
+    implementation("com.google.android.exoplayer:exoplayer-ui:2.19.1")
+    // minSdk < 21 必须用 legacy multidex，否则主 dex 超 64K 直接构建失败
+    implementation("androidx.multidex:multidex:2.0.1")
     // 二维码生成（纯 Java，仅 core，不含 Android 集成包）
     implementation("com.google.zxing:core:3.5.3")
 }

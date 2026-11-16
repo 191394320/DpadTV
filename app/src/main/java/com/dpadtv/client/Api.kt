@@ -332,6 +332,8 @@ class Api(baseUrl: String) {
      * 订阅里的 liveSources 每条都带 name，丢掉名字界面上就只剩一长串链接。
      */
     fun parseLiveSources(text: String): List<LiveSource> {
+        // 去重不能用 Map.putIfAbsent：那是 Java 8 默认方法，框架到 API 24 才有，
+        // 4.4~6.0 上调它会 NoSuchMethodError
         val out = LinkedHashMap<String, LiveSource>()
         runCatching {
             val root = JSONObject(text)
@@ -339,17 +341,19 @@ class Api(baseUrl: String) {
                 val arr = root.optJSONArray(key) ?: continue
                 for (i in 0 until arr.length()) {
                     when (val v = arr.opt(i)) {
-                        is String -> if (v.isNotEmpty()) out.putIfAbsent(v, LiveSource("", v))
+                        is String -> if (v.isNotEmpty() && !out.containsKey(v)) out[v] = LiveSource("", v)
                         is JSONObject -> {
                             val u = v.optString("url", "")
-                            if (u.isNotEmpty()) out.putIfAbsent(u, LiveSource(v.optString("name", ""), u))
+                            if (u.isNotEmpty() && !out.containsKey(u)) {
+                                out[u] = LiveSource(v.optString("name", ""), u)
+                            }
                         }
                     }
                 }
             }
         }
         // 网页版导出的 liveSelectedUrls 只有地址
-        parseLiveFromExport(text).forEach { out.putIfAbsent(it, LiveSource("", it)) }
+        parseLiveFromExport(text).forEach { if (!out.containsKey(it)) out[it] = LiveSource("", it) }
         return out.values.toList()
     }
 
