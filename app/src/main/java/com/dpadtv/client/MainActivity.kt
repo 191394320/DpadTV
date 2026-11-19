@@ -2957,7 +2957,12 @@ class MainActivity : Activity() {
     /** 当前详情页对应的搜索结果，用于「换源 / 重试」原地重绘时比对请求是否已经过期 */
     private var openItem: SearchItem? = null
 
-    private fun openDetail(item: SearchItem) {
+    /** 详情页的返回目标："" 走默认（搜索结果 / 首页），"history" 是点「继续观看」进来的 */
+    private var detailFrom = ""
+
+    private fun openDetail(item: SearchItem, from: String = "") {
+        // 详情页的返回目标由"从哪儿进来的"决定，换源/重试重画时要原样带过去
+        detailFrom = from
         openItem = item
         detailError = ""
         detailState = "loading"
@@ -3109,14 +3114,14 @@ class MainActivity : Activity() {
                 else -> "▶   从第 1 集播放"
             }
             val playBtn = button(label, primary = true) {
-                playFromList(episodes, resumeIndex.coerceAtLeast(0), title, coverUrl)
+                playFromList(episodes, resumeIndex.coerceAtLeast(0), title, coverUrl, vod = item)
             }
             primaryAction = playBtn
             actionRow.addView(playBtn)
             // 有进度时给一个「从头开始」的出口，否则用户只能续播，没法重看
             if (resumeIndex >= 0) {
                 actionRow.addView(button("从头播放") {
-                    playFromList(episodes, 0, title, coverUrl, fromStart = true)
+                    playFromList(episodes, 0, title, coverUrl, fromStart = true, vod = item)
                 })
             }
         }
@@ -3149,7 +3154,7 @@ class MainActivity : Activity() {
                     (if (current) "● " else "") + alt.sourceName.ifEmpty { "来源" },
                     active = current,
                 ) {
-                    if (!current) openDetail(alt)
+                    if (!current) openDetail(alt, detailFrom)
                 })
             }
             col.addView(hScroll(sourceRow))
@@ -3168,7 +3173,7 @@ class MainActivity : Activity() {
                 setPadding(0, dp(18), 0, 0)
             })
             if (detailState == "error") {
-                val retry = button("重试", primary = true) { openDetail(item) }
+                val retry = button("重试", primary = true) { openDetail(item, detailFrom) }
                 col.addView(retry, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)).apply { topMargin = dp(10) })
                 if (primaryAction == null) primaryAction = retry
@@ -3222,7 +3227,7 @@ class MainActivity : Activity() {
             }
         }
         epGrid.setOnItemClickListener { _, _, position, _ ->
-            playFromList(episodes, position, title, coverUrl)
+            playFromList(episodes, position, title, coverUrl, vod = item)
         }
         col.addView(epGrid, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
@@ -3259,6 +3264,10 @@ class MainActivity : Activity() {
 
     /** 详情页的返回目标：有结果就回结果页，直接从首页点进来则回首页 */
     private fun backFromDetail() {
+        if (detailFrom == "history") {
+            showHistoryCards()
+            return
+        }
         if (lastResults.isNotEmpty()) showResults() else showRecommend()
     }
 
@@ -3276,7 +3285,7 @@ class MainActivity : Activity() {
         }
     }
 
-    /** 单集播放（直播频道、观看历史都用这个） */
+    /** 只给播放器一个地址：播放器里没有选集/上下集，也不会有自动连播 */
     private fun play(url: String, title: String, isLive: Boolean = false) =
         playFromList(listOf(url), 0, title, isLive = isLive)
 
@@ -3305,6 +3314,7 @@ class MainActivity : Activity() {
         fromStart: Boolean = false,
         isLive: Boolean = false,
         itemTitles: List<String> = emptyList(),
+        vod: SearchItem? = null,
     ) {
         if (urls.isEmpty()) return
         // 直播统一走服务端代理：地方台直连经常被地区限制或断流，网页版就是靠代理播的
@@ -3315,6 +3325,12 @@ class MainActivity : Activity() {
             // 每一集/每个频道各自的标题：切台后片名要跟着变，不能一直显示进来时的那个
             if (itemTitles.isNotEmpty()) {
                 putStringArrayListExtra(PlayerActivity.EXTRA_ITEM_TITLES, ArrayList(itemTitles))
+            }
+            // 详情页的坐标转交给播放器写进历史，「继续观看」才有路回到详情页
+            if (vod != null && vod.vodId.isNotEmpty()) {
+                putExtra(PlayerActivity.EXTRA_VOD_ID, vod.vodId)
+                putExtra(PlayerActivity.EXTRA_SOURCE_URL, vod.sourceUrl)
+                putExtra(PlayerActivity.EXTRA_SOURCE_NAME, vod.sourceName)
             }
             putExtra(PlayerActivity.EXTRA_INDEX, index.coerceIn(0, urls.size - 1))
             putExtra(PlayerActivity.EXTRA_TITLE, title)
@@ -3650,6 +3666,35 @@ class MainActivity : Activity() {
 
     /* ------------------------------------------------------------ 继续观看 */
 
+    /**
+     * 「继续观看」点进去 = 详情页，不是直接播。
+     * 直接播只能把这一集交给播放器，而「选集 / 上集 / 下集」和"放完自动进下一集"
+     * 都要 urls.size > 1 才成立，所以从历史进来一直就没得切集。
+     * 详情页自己会去拉集数，默认焦点又正好落在「继续观看 · 第 N 集」上，
+     * 等于多按一次 OK 换回整套上下文（简介 / 换源 / 选集）。
+     * 改版之前存的历史没有 vodId，那时压根没往播放器传，退回原来的直接播。
+     */
+    private fun openFromHistory(h: HistoryEntry) {
+        if (h.vodId.isEmpty() || h.sourceUrl.isEmpty()) {
+            play(h.playUrl, h.title)
+            return
+        }
+        openDetail(
+            SearchItem(
+                sourceName = h.sourceName,
+                vodId = h.vodId,
+                // 历史标题带「· 第 3/24 集」后缀（播放器按集写的），详情页只认片名
+                name = h.title.substringBefore(" · 第 "),
+                pic = h.cover,
+                typeName = "",
+                year = "",
+                remarks = "",
+                sourceUrl = h.sourceUrl,
+            ),
+            from = "history",
+        )
+    }
+
     /** 继续观看：卡片形式（封面 + 片名 + 进度） */
     private fun showHistoryCards() {
         // 历史里缺封面的记录：用片名反查一次，拿到海报就写回（最多补 5 条）
@@ -3685,7 +3730,7 @@ class MainActivity : Activity() {
             return
         }
 
-        col.addView(sectionLabel("选中即从上次位置继续播放 · 长按删除"))
+        col.addView(sectionLabel("选中进入详情页，接着上次的位置继续播 · 长按删除"))
         val grid = posterGrid(6)
         grid.adapter = object : BaseAdapter() {
             override fun getCount() = items2.size
@@ -3700,12 +3745,12 @@ class MainActivity : Activity() {
                     h.title,
                     meta = formatTime(h.positionMs) + " / " + formatTime(h.durationMs),
                 )
-                holder.cell.setOnClickListener { play(h.playUrl, h.title) }
+                holder.cell.setOnClickListener { openFromHistory(h) }
                 return holder.cell
             }
         }
         grid.setOnItemClickListener { _, _, pos, _ ->
-            items2.getOrNull(pos)?.let { play(it.playUrl, it.title) }
+            items2.getOrNull(pos)?.let { openFromHistory(it) }
         }
         grid.setOnItemLongClickListener { _, _, pos, _ ->
             prefs.removeHistory(items2[pos].playUrl)

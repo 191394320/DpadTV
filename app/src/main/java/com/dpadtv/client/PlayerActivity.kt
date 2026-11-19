@@ -48,6 +48,12 @@ class PlayerActivity : Activity() {
 
     private var coverUrl: String = ""
 
+    /** 这部片子在服务器端的身份。播放器自己不知道，由 MainActivity 传进来，
+     *  只为写进观看历史——「继续观看」点进去要回详情页。 */
+    private var vodId = ""
+    private var sourceUrl = ""
+    private var sourceName = ""
+
     companion object {
         const val EXTRA_URLS = "urls"
         const val EXTRA_INDEX = "index"
@@ -65,6 +71,11 @@ class PlayerActivity : Activity() {
 
         /** 每一集 / 每个频道各自的标题，切台后片名跟着变 */
         const val EXTRA_ITEM_TITLES = "item_titles"
+
+        /** 详情页的坐标：写进历史，下次从「继续观看」能回到同一部片子的详情页 */
+        const val EXTRA_VOD_ID = "vod_id"
+        const val EXTRA_SOURCE_URL = "source_url"
+        const val EXTRA_SOURCE_NAME = "source_name"
 
         private const val SAVE_INTERVAL_MS = 5_000L
         private const val HIDE_UI_DELAY_MS = 4_000L
@@ -184,6 +195,9 @@ class PlayerActivity : Activity() {
         fromStart = intent.getBooleanExtra(EXTRA_FROM_START, false)
         isLive = intent.getBooleanExtra(EXTRA_IS_LIVE, false)
         cookieHeader = intent.getStringExtra(EXTRA_COOKIE).orEmpty()
+        vodId = intent.getStringExtra(EXTRA_VOD_ID).orEmpty()
+        sourceUrl = intent.getStringExtra(EXTRA_SOURCE_URL).orEmpty()
+        sourceName = intent.getStringExtra(EXTRA_SOURCE_NAME).orEmpty()
         seekStepMs = prefs.seekStepSeconds.coerceIn(5, 120) * 1000L
         if (com.dpadtv.client.BuildConfig.DEBUG) {
             android.util.Log.d("DpadTV", "onCreate urls=$urls live=$isLive cookie=${cookieHeader.isNotEmpty()}")
@@ -1158,6 +1172,9 @@ class PlayerActivity : Activity() {
                         durationMs = p.duration.coerceAtLeast(0L),
                         updatedAt = System.currentTimeMillis(),
                         cover = coverUrl,
+                        vodId = vodId,
+                        sourceUrl = sourceUrl,
+                        sourceName = sourceName,
                     ),
                 )
             }

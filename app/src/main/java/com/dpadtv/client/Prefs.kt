@@ -12,6 +12,11 @@ data class HistoryEntry(
     val durationMs: Long,
     val updatedAt: Long,
     val cover: String = "",
+    /** 回到详情页要用的定位信息。播放器本身不知道这些，是 MainActivity 传进去的；
+     *  旧记录（以及搜索结果里直接播的单集）没有，留空就退回"点了直接播"。 */
+    val vodId: String = "",
+    val sourceUrl: String = "",
+    val sourceName: String = "",
 )
 
 /** 本地配置：服务器、会话 Cookie、片源列表。全部存在应用私有 SharedPreferences。 */
@@ -184,6 +189,9 @@ class Prefs(ctx: Context) {
                         durationMs = o.optLong("durationMs", 0),
                         updatedAt = o.optLong("updatedAt", 0),
                         cover = o.optString("cover", ""),
+                        vodId = o.optString("vodId", ""),
+                        sourceUrl = o.optString("sourceUrl", ""),
+                        sourceName = o.optString("sourceName", ""),
                     ),
                 )
             }
@@ -201,10 +209,28 @@ class Prefs(ctx: Context) {
             entry.copy(cover = existing.cover, title = entry.title.ifEmpty { existing.title })
         } else {
             entry
+        }.let {
+            // 详情页带得回定位信息，单集直连（搜索里直接播、旧记录）带不回。
+            // 别让一次"直接播"把已经存下的 vodId 洗掉，否则这条历史就再也进不去详情页了。
+            if (it.vodId.isEmpty() && existing != null && existing.vodId.isNotEmpty()) {
+                it.copy(
+                    vodId = existing.vodId,
+                    sourceUrl = existing.sourceUrl,
+                    sourceName = existing.sourceName,
+                )
+            } else {
+                it
+            }
         }
         val list = history().filterNot { it.playUrl == merged.playUrl }.toMutableList()
         list.add(0, merged)
         while (list.size > 40) list.removeAt(list.size - 1)
+        sp.edit().putString("history", historyJson(list)).apply()
+    }
+
+    /** 历史唯一的序列化出口。removeHistory / updateHistoryCover 都是整表重写，
+     *  各处自己拼一遍的话，加字段必然漏掉两处（这次加 vodId 就是这么发现的）。 */
+    private fun historyJson(list: List<HistoryEntry>): String {
         val arr = JSONArray()
         list.forEach { e ->
             arr.put(
@@ -213,25 +239,18 @@ class Prefs(ctx: Context) {
                     .put("positionMs", e.positionMs)
                     .put("durationMs", e.durationMs)
                     .put("updatedAt", e.updatedAt)
-                    .put("cover", e.cover),
+                    .put("cover", e.cover)
+                    .put("vodId", e.vodId)
+                    .put("sourceUrl", e.sourceUrl)
+                    .put("sourceName", e.sourceName),
             )
         }
-        sp.edit().putString("history", arr.toString()).apply()
+        return arr.toString()
     }
 
     fun removeHistory(playUrl: String) {
-        val arr = JSONArray()
-        history().filterNot { it.playUrl == playUrl }.forEach { e ->
-            arr.put(
-                JSONObject().put("title", e.title)
-                    .put("playUrl", e.playUrl)
-                    .put("positionMs", e.positionMs)
-                    .put("durationMs", e.durationMs)
-                    .put("updatedAt", e.updatedAt)
-                    .put("cover", e.cover),
-            )
-        }
-        sp.edit().putString("history", arr.toString()).apply()
+        val list = history().filterNot { it.playUrl == playUrl }
+        sp.edit().putString("history", historyJson(list)).apply()
     }
 
     fun clearHistory() {
@@ -358,18 +377,7 @@ class Prefs(ctx: Context) {
         val idx = list.indexOfFirst { it.playUrl == playUrl }
         if (idx < 0) return
         list[idx] = list[idx].copy(cover = cover)
-        val arr = JSONArray()
-        list.forEach { e ->
-            arr.put(
-                JSONObject().put("title", e.title)
-                    .put("playUrl", e.playUrl)
-                    .put("positionMs", e.positionMs)
-                    .put("durationMs", e.durationMs)
-                    .put("updatedAt", e.updatedAt)
-                    .put("cover", e.cover),
-            )
-        }
-        sp.edit().putString("history", arr.toString()).apply()
+        sp.edit().putString("history", historyJson(list)).apply()
     }
 }
 
