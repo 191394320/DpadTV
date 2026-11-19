@@ -32,12 +32,23 @@ import javax.net.ssl.X509TrustManager
  *      服务器降级、或只回一条记录头 03 01 的 fatal alert，都会撞进那行变成
  *      "unsupported protocol"，把真实原因吃掉。
  *    - 根证书：/system/etc/security/cacerts 冻结在 2013 年底，2016 年以后入库的根
- *      （Certum Trusted Root CA、ISRG Root X1、GTS…）在上面一律
+ *      （Certum Trusted Root CA、Sectigo PSA Root R46、ISRG Root X1…）在上面一律
  *      "Trust anchor for certification path not found"，同一张证书在新系统上是合法的。
  *      随包带一份当前的 CA 表做兜底，先让系统库判，判不动才用它。
+ *      注意 cacert.pem **第一行就得是 "-----BEGIN CERTIFICATE-----"**：4.4 的
+ *      X509CertFactoryImpl 是拿首字节判格式的（'-' 当 PEM、0x30 当 DER，别的直接抛
+ *      "Unsupported encoding"），curl 那份表头上的 "##" 注释会把整份表顶掉。
+ *      兜底库到底有没有加载成功，走下面的 caStatus 自报，别再让它静默失败一次。
  *    Api 里的 HTTP 请求和 ExoPlayer 的分片下载都取这个默认值，所以一处生效。
  */
 class App : MultiDexApplication() {
+
+    companion object {
+        /** 老盒子没有 adb，这份兜底信任库装没装起来、装起来几张，只能自己报出来；
+         *  测试包把它跟在播放失败那一行前面，一张截图就能分清是哪种失败。 */
+        @Volatile
+        var caStatus = "未启用"
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -46,7 +57,8 @@ class App : MultiDexApplication() {
             val ctx = SSLContext.getInstance("TLS")
             ctx.init(null, arrayOf<TrustManager>(BackupTrust(this)), null)
             HttpsURLConnection.setDefaultSSLSocketFactory(AllTlsVersions(ctx.socketFactory))
-        }
+            caStatus = "TLS层已装"
+        }.onFailure { caStatus = "TLS层失败 ${it.javaClass.simpleName}" }
     }
 
     /** 只改 enabledProtocols 的透传工厂。五个 createSocket 重载都得包：
@@ -119,7 +131,12 @@ class App : MultiDexApplication() {
         private fun backupOrNull(): X509TrustManager? = synchronized(this) {
             if (!backupTried) {
                 backupTried = true
-                backup = runCatching { bundledTrustManager() }.getOrNull()
+                backup = runCatching { bundledTrustManager() }
+                    .onFailure {
+                        // 静默失败过一次，代价是一整轮真机截图还是猜
+                        App.caStatus = "兜底载入失败 ${it.javaClass.simpleName}"
+                    }
+                    .getOrNull()
             }
             backup
         }
@@ -129,8 +146,8 @@ class App : MultiDexApplication() {
                 .apply { init(null as KeyStore?) }
                 .trustManagers.filterIsInstance<X509TrustManager>().first()
 
-        /** res/raw/cacert.pem 是 curl 分发的 Mozilla 根证书表（同 OkHttp 在老安卓上的做法）。
-         *  CertificateFactory 直接吃 PEM 流，不用自己切 BEGIN/END。 */
+        /** res/raw/cacert.pem 是 curl 分发的那份 Mozilla 根证书表去掉注释头，只剩 PEM 块。
+         *  4.4 的 CertificateFactory 逐块扫 "-----BEGIN/-----END" 边界，整份流直接喂进去。 */
         private fun bundledTrustManager(): X509TrustManager {
             val ks = KeyStore.getInstance(KeyStore.getDefaultType())
             ks.load(null, null)
@@ -139,6 +156,7 @@ class App : MultiDexApplication() {
             }
             var i = 0
             for (cert in certs) ks.setCertificateEntry("bundled${i++}", cert)
+            App.caStatus = "兜底${i}张"
             return TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
                 .apply { init(ks) }
                 .trustManagers.filterIsInstance<X509TrustManager>().first()

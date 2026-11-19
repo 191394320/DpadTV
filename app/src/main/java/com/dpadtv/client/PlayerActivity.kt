@@ -619,7 +619,7 @@ class PlayerActivity : Activity() {
                         // 画面上，一次截图就能定死。baseText 保持干净，恢复播放时还要用它
                         titleText.text =
                             if (BuildConfig.TEST_BUILD)
-                                "$baseText\n${failHost()} · ${causeChain(error)}"
+                                "$baseText\n${failHost()} · ${App.caStatus} · ${causeChain(error)}"
                             else baseText
                         titleText.setTextColor(Ui.DANGER)
                         bufferingBox.visibility = View.GONE
