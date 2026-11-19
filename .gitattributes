@@ -1,0 +1,3 @@
+# 4.4 的 PEM 解码器是逐字节找 "-----BEGIN/-----END" 边界的，检出时被换成 CRLF 就多一份 \r；
+# 这份资源要按字节稳定，所以钉死 LF，不走 core.autocrlf。
+app/src/main/res/raw/cacert.pem text eol=lf

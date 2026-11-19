@@ -618,7 +618,9 @@ class PlayerActivity : Activity() {
                         // 老盒子没有 adb，错误码分不出是时钟、根证书还是链路；测试包把异常链摊在
                         // 画面上，一次截图就能定死。baseText 保持干净，恢复播放时还要用它
                         titleText.text =
-                            if (BuildConfig.TEST_BUILD) "$baseText\n${causeChain(error)}" else baseText
+                            if (BuildConfig.TEST_BUILD)
+                                "$baseText\n${failHost()} · ${causeChain(error)}"
+                            else baseText
                         titleText.setTextColor(Ui.DANGER)
                         bufferingBox.visibility = View.GONE
                         speedText.visibility = View.GONE
@@ -647,6 +649,12 @@ class PlayerActivity : Activity() {
                         val head = parts.dropLast(1).map { it.take(70) }
                         return (head + parts.last().take(420)).joinToString(" ← ")
                     }
+
+                    /** 同一句 "trust anchor not found" 可能来自四个不同的 CDN，
+                     *  链里必须自己报出是哪家主机，否则截图还是猜。 */
+                    private fun failHost(): String = runCatching {
+                        android.net.Uri.parse(currentUrl()).host ?: "?"
+                    }.getOrDefault("?")
 
                     /** 时间比固件构建时刻还早，或退到 2018 年以前，就当作 RTC 丢了 */
                     private fun clockLooksBehind(): Boolean =
