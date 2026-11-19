@@ -361,6 +361,14 @@ class Prefs(ctx: Context) {
         if (!sp.contains(k)) return null
         return sp.getBoolean(k, false) to sp.getLong("st_ms:" + url.hashCode(), 0L)
     }
+
+    /** 盒子**直连**这个源的结果（和上面那个服务端代发的是两回事）：
+     *  null 没测过，"" 能连上，其它是 [TlsDiag.tag] 的分类短句。 */
+    fun saveSourceBoxProbe(url: String, tag: String) {
+        sp.edit().putString("st_box:" + url.hashCode(), tag).apply()
+    }
+
+    fun sourceBoxProbe(url: String): String? = sp.getString("st_box:" + url.hashCode(), null)
     /** 首页顶部被隐藏的按钮 id */
     fun homeBarHidden(): Set<String> {
         val text = sp.getString("home_bar_hidden", "") ?: ""

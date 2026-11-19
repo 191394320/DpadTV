@@ -902,7 +902,12 @@ class MainActivity : Activity() {
                 else -> "请求失败 HTTP ${e.status}"
             }
         }
-        else -> "网络失败：${e.message ?: e.javaClass.simpleName}"
+        else -> {
+            // 服务器地址本身也是盒子直连的一个 https 站点，老盒子上最常见的失败就是证书和
+            // TLS 版本，这里直接给出分类；非 IO 的异常别硬套"连不上"那句。
+            if (e is java.io.IOException) "本机连不上（${TlsDiag.tag(e)}）：${TlsDiag.detail(e)}"
+            else "请求失败：${TlsDiag.chain(e)}"
+        }
     }
 
     /* --------------------------------------------------------- 启动与服务器配置 */
@@ -1922,20 +1927,28 @@ class MainActivity : Activity() {
         row.addView(texts, LinearLayout.LayoutParams(
             0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
+        // 两路结果分开看：r 是服务端代发取采集接口（说明源本身有没有货），
+        // box 是**这块盒子**直连（说明这台老机器能不能握手、认不认证书）。
+        // 老盒子上 box 才是会拦住播放的那个，所以它失败时优先报它。
         val r = prefs.sourceTest(s.url)
+        val box = prefs.sourceBoxProbe(s.url)
         val label = when {
             testingUrls.contains(s.url) -> "测试中…"
             !s.enabled -> "已停用"
-            r == null -> "未测试"
-            r.first -> "可用"
-            else -> "不可用"
+            // 本机直连失败优先报：这一格要拦住的是"这块盒子能不能播"
+            box != null && box.isNotEmpty() -> box
+            r != null && !r.first -> "不可用"
+            r != null && r.first -> "可用"
+            box != null -> "本机可连"
+            else -> "未测试"
         }
         val color = when {
             testingUrls.contains(s.url) -> ACCENT
             !s.enabled -> Ui.TEXT_FAINT
-            r == null -> Ui.TEXT_DIM
-            r.first -> Ui.OK
-            else -> Ui.DANGER
+            box != null && box.isNotEmpty() -> Ui.DANGER
+            r != null && !r.first -> Ui.DANGER
+            r != null || box != null -> Ui.OK
+            else -> Ui.TEXT_DIM
         }
         row.addView(TextView(this).apply {
             text = label
@@ -2065,24 +2078,60 @@ class MainActivity : Activity() {
         refreshSourceRows()
         scope.launch {
             var failed = 0
+            var boxBad = 0
             for (s in list) {
-                val r = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    runCatching { api.testSource(s.url) }.getOrNull()
+                val (server, probe) = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    runCatching { api.testSource(s.url) }.getOrNull() to probeSourceFromBox(s)
                 }
-                if (r != null) {
-                    prefs.saveSourceTest(s.url, r.first, r.second.toLong())
-                    if (!r.first) failed++
+                prefs.saveSourceBoxProbe(s.url, probe.second.tag)
+                if (server != null) {
+                    prefs.saveSourceTest(s.url, server.first, server.second.toLong())
+                    if (!server.first) failed++
                 }
+                if (!probe.second.ok) boxBad++
                 testingUrls.remove(s.url)
                 withContext(kotlinx.coroutines.Dispatchers.Main) { refreshSourceRows() }
             }
             testingUrls.clear()
             withContext(kotlinx.coroutines.Dispatchers.Main) {
                 refreshSourceRows()
-                toast(if (failed > 0) "测试完成：$failed 个不可用" else "测试完成：全部可用")
+                toast(
+                    when {
+                        failed == 0 && boxBad == 0 -> "测试完成：全部可用"
+                        else -> buildString {
+                            append("测试完成")
+                            if (failed > 0) append("：服务器侧 $failed 个不可用")
+                            if (boxBad > 0) {
+                                append(if (failed > 0) " · " else "：本机 ")
+                                append("$boxBad 个连不上")
+                            }
+                        }
+                    }
+                )
             }
         }
     }
+
+    /** 这个源最近一次真正播过的分片地址，没有就返回空（没播过的源只能测采集接口）。 */
+    private fun samplePlayUrl(s: SourceConfig): String =
+        prefs.history().firstOrNull { it.sourceUrl == s.url && it.playUrl.isNotEmpty() }?.playUrl.orEmpty()
+
+    /**
+     * 盒子**自己**直连这个源，绕开服务端代发 —— 因为能播的是盒子，不是服务器。
+     * 先测采集接口；采集接口通了再测这个源最近一次播过的分片地址，因为真正出问题的往往是
+     * CDN 那台主机（采集站和分片不同域名的源很多）。返回"实际探到的主机 + 结果"，
+     * 报的时候必须说清探的是哪台，否则采集站通了、分片挂了也会被读成"没问题"。
+     */
+    private fun probeSourceFromBox(s: SourceConfig): Pair<String, TlsDiag.Outcome> {
+        val direct = TlsDiag.probe(s.url)
+        if (!direct.ok) return hostOf(s.url) to direct
+        val play = samplePlayUrl(s)
+        return if (play.isEmpty()) hostOf(s.url) to direct
+        else hostOf(play) to TlsDiag.probe(play)
+    }
+
+    private fun hostOf(url: String): String =
+        runCatching { android.net.Uri.parse(url).host ?: "?" }.getOrDefault("?")
 
     /**
      * 只刷新片源行的状态文字，不重建页面。
@@ -2101,8 +2150,12 @@ class MainActivity : Activity() {
         if (sources.isEmpty()) return "还没有片源"
         val enabled = sources.count { it.enabled }
         val usable = sources.count { isUsableSource(it) }
+        val boxBad = sources.count { (prefs.sourceBoxProbe(it.url) ?: "").isNotEmpty() }
         return buildString {
             append("共 ${sources.size} · 启用 $enabled · 可用 $usable")
+            if (boxBad > 0) append(" · 本机连不上 $boxBad")
+            // 老盒子的兜底根证书表状态：这一行能看出"随包那份表到底装起来没有"
+            if (App.caStatus != "未启用") append(" · 本机证书${App.caStatus}")
             if (prefs.searchOnlyAvailable) append(" · 搜索仅用可用")
         }
     }
@@ -2193,13 +2246,40 @@ class MainActivity : Activity() {
             .show()
     }
 
+    /**
+     * 单个源的两路体检：服务端有没有货 + 这块盒子直连得上吗。
+     * 老盒子上真正会拦住播放的是第二路，所以它失败时把分类和整句原因都摊开，
+     * 不用再靠播放页截图猜。
+     */
     private fun testSource(s: SourceConfig) {
-        runApi("正在测试「${s.name}」…", { api.testSource(s.url) }, { r ->
-            toast(
-                if (r.first) "「${s.name}」可用"
-                else "「${s.name}」不可用（HTTP ${r.second}）",
-            )
-        })
+        runApi(
+            "正在测试「${s.name}」…",
+            { runCatching { api.testSource(s.url) }.getOrNull() to probeSourceFromBox(s) },
+            { (server, probe) ->
+                val box = probe.second
+                prefs.saveSourceBoxProbe(s.url, box.tag)
+                if (server != null) prefs.saveSourceTest(s.url, server.first, server.second.toLong())
+                val goods = when {
+                    server == null -> "采集接口：服务器那边就没测到"
+                    server.first -> "采集接口：有货（${server.second} 条）"
+                    else -> "采集接口：没货（HTTP ${server.second}）"
+                }
+                val direct = if (box.ok) {
+                    buildString {
+                        append("本机直连 ${probe.first}：通（${box.ms}ms）")
+                        if (samplePlayUrl(s).isEmpty()) append("\n这个源没播过，只测到采集接口")
+                    }
+                } else {
+                    "本机直连 ${probe.first}：${box.tag}（${box.ms}ms）\n${box.detail}"
+                }
+                AlertDialog.Builder(this)
+                    .setTitle(s.name.ifEmpty { labelOf(s.url) })
+                    .setMessage("$goods\n$direct")
+                    .setPositiveButton("好", null)
+                    .show()
+                refreshSourceRows()
+            }
+        )
     }
     /* --------------------------------------------------------------- 添加片源 */
 

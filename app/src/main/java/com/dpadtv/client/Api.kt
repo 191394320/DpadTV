@@ -360,23 +360,9 @@ class Api(baseUrl: String) {
     /** 只要地址的旧接口 */
     fun parseLiveUrls(text: String): List<String> = parseLiveSources(text).map { it.url }
 
-    /** 探测一个流是否还能播：能拿到响应头就算活（HLS 的 .m3u8 一般 200/206） */
-    fun probe(url: String, timeoutMs: Int = 4000): Boolean {
-        var conn: HttpURLConnection? = null
-        return try {
-            conn = URL(url).openConnection() as HttpURLConnection
-            conn.connectTimeout = timeoutMs
-            conn.readTimeout = timeoutMs
-            conn.instanceFollowRedirects = true
-            conn.setRequestProperty("Range", "bytes=0-2047")
-            conn.setRequestProperty("User-Agent", "DpadTV-Android")
-            conn.responseCode in 200..399
-        } catch (e: Exception) {
-            false
-        } finally {
-            runCatching { conn?.disconnect() }
-        }
-    }
+    /** 探测一个流是否还能播：能拿到响应头就算活（HLS 的 .m3u8 一般 200/206）。
+     *  实现挪到 [TlsDiag.probe]，那边顺带把"为什么连不上"分类出来，这里只留布尔。 */
+    fun probe(url: String, timeoutMs: Int = 4000): Boolean = TlsDiag.probe(url, timeoutMs).ok
 
     /** 本地解析。兼容三种格式：网页版导出（LibreTV-Settings）、LibreTV-SourceList、TVBOX 配置。 */
     fun parseSourceList(text: String): List<SourceConfig> {

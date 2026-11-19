@@ -619,7 +619,7 @@ class PlayerActivity : Activity() {
                         // 画面上，一次截图就能定死。baseText 保持干净，恢复播放时还要用它
                         titleText.text =
                             if (BuildConfig.TEST_BUILD)
-                                "$baseText\n${failHost()} · ${App.caStatus} · ${causeChain(error)}"
+                                "$baseText\n${failHost()} · ${TlsDiag.tag(error)} · ${App.caStatus}\n${TlsDiag.chain(error)}"
                             else baseText
                         titleText.setTextColor(Ui.DANGER)
                         bufferingBox.visibility = View.GONE
@@ -627,27 +627,6 @@ class PlayerActivity : Activity() {
                         updateChrome()
                         // 出错时把操作栏顶出来：用户不用先摸索按键就能换下一集
                         showActions()
-                    }
-
-                    /** 异常链：外层截短，**最里层留全**。4.4 的 OpenSSL 错误码只在最后一行
-                     *  （error:14077410:SSL routines:SSL23_GET_SERVER_HELLO:sslv3 alert handshake
-                     *  failure 之类），而它才能分清是服务器拒绝我们的 ClientHello，还是中间有人
-                     *  插了一手回了明文。上一版把每层都截到 80 字，正好把这半行截没了。 */
-                    private fun causeChain(t: Throwable?): String {
-                        val parts = ArrayList<String>(4)
-                        var cur = t
-                        while (cur != null) {
-                            val m = cur.message
-                            parts.add(
-                                cur.javaClass.simpleName +
-                                    if (m.isNullOrEmpty()) "" else ": " + m.replace('\n', ' ').trim()
-                            )
-                            if (parts.size >= 4) break
-                            cur = cur.cause
-                        }
-                        if (parts.isEmpty()) return ""
-                        val head = parts.dropLast(1).map { it.take(70) }
-                        return (head + parts.last().take(420)).joinToString(" ← ")
                     }
 
                     /** 同一句 "trust anchor not found" 可能来自四个不同的 CDN，
